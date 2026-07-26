@@ -4,9 +4,8 @@ Lets Claude play [shapez](https://github.com/tobspr-games/shapez.io), a factory 
 
 ## Why
 
-I wanted to see how models handle these types of games. Factory games are mostly ratio math
-and spatial planning, and a bad layout fails quietly instead of throwing an error, so it
-seemed like an interesting thing to point a model at.
+Most factory games come down to throughput ratios and production chains, which puts a lot of
+weight on the layout decisions. That seemed like an interesting thing to have a model work at.
 
 ## How it works
 
