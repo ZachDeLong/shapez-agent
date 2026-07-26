@@ -1,0 +1,21 @@
+{
+  "name": "shapez-agent",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Lets Claude play shapez: a game-side mod, an A* belt router, and an agent loop.",
+  "scripts": {
+    "bridge": "node server/bridge-server.mjs",
+    "serve-mod": "node server/serve-mod.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "agent": "node agent/run.mjs",
+    "test": "node scripts/test-all.mjs",
+    "build": "node scripts/build.mjs",
+    "install-mod": "node scripts/install-mod.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "ws": "^8.18.0"
+  },
+  "license": "GPL-3.0-or-later"
+}
