@@ -167,6 +167,28 @@ try {
 check("stopping the bridge rejects connection waiters", stopRejectedWaiter);
 check("stopping the bridge removes connection waiters", stoppedBridge.waitingForConnect.size === 0);
 
+// --- waitForInGame uses one timeout budget across connection and polling ---
+const budgetBridge = new GameBridge({ log: () => {} });
+const mainMenuSocket = new FakeSocket();
+mainMenuSocket.send = (raw, callback) => {
+    const { id } = JSON.parse(raw);
+    callback?.();
+    queueMicrotask(() => {
+        budgetBridge.onMessage(JSON.stringify({ id, ok: true, result: { inGame: false } }));
+    });
+};
+const budgetStarted = Date.now();
+setTimeout(() => budgetBridge.handleConnection(mainMenuSocket), 70);
+let inGameTimedOut = false;
+try {
+    await budgetBridge.waitForInGame({ timeoutMs: 100, pollMs: 5 });
+} catch (ex) {
+    inGameTimedOut = ex.message.includes("main menu");
+}
+const budgetElapsed = Date.now() - budgetStarted;
+check("in-game wait reports its timeout", inGameTimedOut);
+check("connection time counts against the in-game timeout", budgetElapsed < 140, `${budgetElapsed}ms`);
+
 // --- disconnect fails in-flight calls instead of hanging ---
 const inflight = bridge.call("observe", {}, 5000);
 game.terminate();

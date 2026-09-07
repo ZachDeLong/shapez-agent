@@ -87,22 +87,32 @@ export class GameBridge {
      * fails. Poll until it reports in-game.
      */
     async waitForInGame({ timeoutMs = 600_000, pollMs = 1000, onWait } = {}) {
-        await this.waitForGame(timeoutMs);
         const deadline = Date.now() + timeoutMs;
+        await this.waitForGame(timeoutMs);
         let announced = false;
 
         for (;;) {
-            const status = await this.ping().catch(() => null);
+            const remainingBeforePing = deadline - Date.now();
+            if (remainingBeforePing <= 0) {
+                throw new Error(`Still at the main menu after ${Math.round(timeoutMs / 1000)}s`);
+            }
+
+            const status = await this.call(
+                "ping",
+                {},
+                Math.min(DEFAULT_TIMEOUT_MS, remainingBeforePing)
+            ).catch(() => null);
             if (status?.inGame) return status;
 
             if (!announced && onWait) {
                 onWait();
                 announced = true;
             }
-            if (Date.now() > deadline) {
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) {
                 throw new Error(`Still at the main menu after ${Math.round(timeoutMs / 1000)}s`);
             }
-            await new Promise(resolve => setTimeout(resolve, pollMs));
+            await new Promise(resolve => setTimeout(resolve, Math.min(pollMs, remaining)));
         }
     }
 
