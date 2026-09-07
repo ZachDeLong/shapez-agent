@@ -17,7 +17,8 @@ export class GameBridge {
         this.nextId = 1;
         /** @type {Map<number, {resolve: Function, reject: Function, timer: any}>} */
         this.pending = new Map();
-        this.waitingForConnect = [];
+        /** @type {Set<{resolve: Function, reject: Function, timer: any}>} */
+        this.waitingForConnect = new Set();
         this.server = null;
     }
 
@@ -39,9 +40,12 @@ export class GameBridge {
         this.socket = socket;
         this.log("[bridge] game connected");
 
-        const waiters = this.waitingForConnect;
-        this.waitingForConnect = [];
-        for (const resolve of waiters) resolve();
+        const waiters = [...this.waitingForConnect];
+        this.waitingForConnect.clear();
+        for (const waiter of waiters) {
+            clearTimeout(waiter.timer);
+            waiter.resolve();
+        }
 
         socket.on("message", raw => this.onMessage(raw));
         socket.on("close", () => {
@@ -57,6 +61,7 @@ export class GameBridge {
 
     stop() {
         this.failAllPending(new Error("Bridge stopped"));
+        this.failAllConnectWaiters(new Error("Bridge stopped"));
         if (this.socket) this.socket.terminate();
         if (this.server) this.server.close();
     }
@@ -65,14 +70,12 @@ export class GameBridge {
     waitForGame(timeoutMs = 120_000) {
         if (this.socket) return Promise.resolve();
         return new Promise((resolve, reject) => {
-            const timer = setTimeout(
-                () => reject(new Error(`No game connected after ${timeoutMs}ms`)),
-                timeoutMs
-            );
-            this.waitingForConnect.push(() => {
-                clearTimeout(timer);
-                resolve();
-            });
+            const waiter = { resolve, reject, timer: null };
+            waiter.timer = setTimeout(() => {
+                this.waitingForConnect.delete(waiter);
+                reject(new Error(`No game connected after ${timeoutMs}ms`));
+            }, timeoutMs);
+            this.waitingForConnect.add(waiter);
         });
     }
 
@@ -133,6 +136,14 @@ export class GameBridge {
             entry.reject(error);
         }
         this.pending.clear();
+    }
+
+    failAllConnectWaiters(error) {
+        for (const waiter of this.waitingForConnect) {
+            clearTimeout(waiter.timer);
+            waiter.reject(error);
+        }
+        this.waitingForConnect.clear();
     }
 
     /**

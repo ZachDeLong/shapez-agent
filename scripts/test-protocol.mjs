@@ -144,6 +144,29 @@ try {
 check("send callback failure rejects with its cause", callbackSendRejected);
 check("send callback failure clears pending state", callbackBridge.pending.size === 0);
 
+// --- connection waiters settle and release their timers ---
+const timeoutBridge = new GameBridge({ log: () => {} });
+let connectTimedOut = false;
+try {
+    await timeoutBridge.waitForGame(5);
+} catch (ex) {
+    connectTimedOut = ex.message.includes("No game connected");
+}
+check("connection wait timeout rejects", connectTimedOut);
+check("timed-out connection waiter is removed", timeoutBridge.waitingForConnect.size === 0);
+
+const stoppedBridge = new GameBridge({ log: () => {} });
+const stoppedWaiter = stoppedBridge.waitForGame(5000);
+stoppedBridge.stop();
+let stopRejectedWaiter = false;
+try {
+    await stoppedWaiter;
+} catch (ex) {
+    stopRejectedWaiter = ex.message.includes("Bridge stopped");
+}
+check("stopping the bridge rejects connection waiters", stopRejectedWaiter);
+check("stopping the bridge removes connection waiters", stoppedBridge.waitingForConnect.size === 0);
+
 // --- disconnect fails in-flight calls instead of hanging ---
 const inflight = bridge.call("observe", {}, 5000);
 game.terminate();
