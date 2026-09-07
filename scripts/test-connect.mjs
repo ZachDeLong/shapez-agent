@@ -277,6 +277,56 @@ console.log("\n=== run duration validation ===");
     }
 }
 
+console.log("\n=== atomic placement rollback ===");
+{
+    const root = makeRoot();
+    const place = root.logic.tryPlaceBuilding;
+    let attempts = 0;
+    root.logic.tryPlaceBuilding = options => (++attempts === 3 ? null : place(options));
+    const mod = newMod(root);
+    let message = "";
+    try {
+        mod.placeMany({
+            entities: [
+                { type: "belt", x: 10, y: 10 },
+                { type: "belt", x: 11, y: 10 },
+                { type: "belt", x: 12, y: 10 },
+            ],
+            atomic: true,
+        });
+    } catch (ex) {
+        message = ex.message;
+    }
+    check("successful rollback is reported", message.includes("(rolled back)"), message);
+    check("successful rollback leaves no placed entities", root.tiles.size === 0, String(root.tiles.size) + " remain");
+}
+{
+    const root = makeRoot();
+    const place = root.logic.tryPlaceBuilding;
+    const remove = root.logic.tryDeleteBuilding;
+    let attempts = 0;
+    let removals = 0;
+    root.logic.tryPlaceBuilding = options => (++attempts === 3 ? null : place(options));
+    root.logic.tryDeleteBuilding = entity => (++removals === 1 ? false : remove(entity));
+    const mod = newMod(root);
+    let message = "";
+    try {
+        mod.placeMany({
+            entities: [
+                { type: "belt", x: 20, y: 20 },
+                { type: "belt", x: 21, y: 20 },
+                { type: "belt", x: 22, y: 20 },
+            ],
+            atomic: true,
+        });
+    } catch (ex) {
+        message = ex.message;
+    }
+    check("failed rollback is not reported as complete", message.includes("rollback incomplete"), message);
+    check("failed rollback identifies the entity left behind", message.includes("(21,20)"), message);
+    check("rollback still removes the other placed entities", root.tiles.size === 1, String(root.tiles.size) + " remain");
+}
+
 // patch.pos is the centroid of a patch's tiles, so it is fractional and can sit
 // on a tile with no resource on it. Miners must go on an actual resource tile.
 console.log("\n=== resource patch anchoring ===");

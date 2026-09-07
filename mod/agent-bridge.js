@@ -243,12 +243,24 @@ class Mod extends shapez.Mod {
             } catch (ex) {
                 failures.push({ index: i, spec: entities[i], error: String(ex.message || ex) });
                 if (atomic) {
-                    for (const p of placed) {
+                    const rollbackFailures = [];
+                    for (const p of [...placed].reverse()) {
                         const e = this.root.entityMgr.findByUid(p.uid, false);
-                        if (e) this.root.logic.tryDeleteBuilding(e);
+                        if (!e) continue;
+                        try {
+                            if (!this.root.logic.tryDeleteBuilding(e)) rollbackFailures.push(p);
+                        } catch {
+                            rollbackFailures.push(p);
+                        }
                     }
+
+                    const rollbackStatus = rollbackFailures.length
+                        ? "; rollback incomplete for " + rollbackFailures
+                            .map(p => "(" + p.x + "," + p.y + ")")
+                            .join(", ")
+                        : " (rolled back)";
                     throw new Error(
-                        "Atomic batch failed at index " + i + ": " + String(ex.message || ex) + " (rolled back)"
+                        "Atomic batch failed at index " + i + ": " + String(ex.message || ex) + rollbackStatus
                     );
                 }
             }
