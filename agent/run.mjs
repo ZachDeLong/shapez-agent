@@ -10,6 +10,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaTool } from "@anthropic-ai/sdk/helpers/beta/json-schema";
 import { GameBridge } from "../server/bridge-server.mjs";
+import { readIntegerEnv } from "../server/env.mjs";
 import { TOOLS, createDispatcher } from "../server/tools.mjs";
 import { SYSTEM_PROMPT, initialTask } from "./prompt.mjs";
 
@@ -18,7 +19,7 @@ const MODEL = "claude-opus-5";
 // is the cheaper starting point for a loop that runs many turns. Worth testing
 // both on your own runs.
 const EFFORT = process.env.AGENT_EFFORT || "high";
-const MAX_TURNS = Number(process.env.AGENT_MAX_TURNS || 40);
+const MAX_TURNS = readIntegerEnv("AGENT_MAX_TURNS", process.env.AGENT_MAX_TURNS, 40);
 
 // Opus 5's safety classifiers can decline a request outright; this re-serves it
 // on another model inside the same call instead of returning the refusal.

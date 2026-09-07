@@ -11,6 +11,7 @@ const SUITES = [
     ["connect / port resolution", "test-connect.mjs"],
     ["agent loop", "test-agent-loop.mjs"],
     ["atomic file writes", "test-atomic-write.mjs"],
+    ["environment settings", "test-env.mjs"],
 ];
 
 let failed = 0;

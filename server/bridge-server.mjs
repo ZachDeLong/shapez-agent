@@ -5,8 +5,9 @@
 // first (that's a page reload, not a second player).
 
 import { WebSocketServer } from "ws";
+import { readIntegerEnv } from "./env.mjs";
 
-const PORT = Number(process.env.BRIDGE_PORT || 8765);
+const PORT = readIntegerEnv("BRIDGE_PORT", process.env.BRIDGE_PORT, 8765, { max: 65_535 });
 const DEFAULT_TIMEOUT_MS = 30_000;
 export const MAX_RUN_SECONDS = 300;
 

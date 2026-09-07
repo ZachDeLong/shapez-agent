@@ -12,8 +12,9 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join, basename } from "node:path";
+import { readIntegerEnv } from "./env.mjs";
 
-const PORT = Number(process.env.MOD_PORT || 3006);
+const PORT = readIntegerEnv("MOD_PORT", process.env.MOD_PORT, 3006, { max: 65_535 });
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MOD_DIR = join(ROOT, "mod");
 
