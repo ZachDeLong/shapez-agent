@@ -10,6 +10,7 @@ const SUITES = [
     ["bridge protocol", "test-protocol.mjs"],
     ["connect / port resolution", "test-connect.mjs"],
     ["agent loop", "test-agent-loop.mjs"],
+    ["atomic file writes", "test-atomic-write.mjs"],
 ];
 
 let failed = 0;

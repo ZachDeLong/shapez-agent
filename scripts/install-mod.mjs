@@ -3,10 +3,11 @@
 // The standalone reads every .js in %APPDATA%/shapez.io/mods at startup
 // (electron/index.js:27), so installing is just dropping the built file there.
 
-import { readFile, writeFile, mkdir, access } from "node:fs/promises";
+import { readFile, mkdir, access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { buildMod } from "../server/serve-mod.mjs";
+import { writeFileAtomic } from "./atomic-write.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -34,6 +35,6 @@ try {
     await mkdir(dir, { recursive: true });
 }
 
-await writeFile(target, built, "utf8");
+await writeFileAtomic(target, built);
 console.log(`Installed ${target} (${built.length} bytes)`);
 console.log("\nRestart shapez to load it. Delete that file to uninstall.");

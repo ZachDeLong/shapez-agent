@@ -4,10 +4,11 @@
 // standalone reads plain .js files off disk, so the router has to be inlined
 // ahead of time rather than at serve time.
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { buildMod } from "../server/serve-mod.mjs";
+import { writeFileAtomic } from "./atomic-write.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = process.argv[2] ? process.argv[2] : join(ROOT, "dist");
@@ -24,5 +25,5 @@ if (!built.includes("const METADATA")) throw new Error("no METADATA in the outpu
 new Function(built); // parse check — catches syntax errors before the game does
 
 await mkdir(OUT_DIR, { recursive: true });
-await writeFile(OUT, built, "utf8");
+await writeFileAtomic(OUT, built);
 console.log(`Wrote ${OUT} (${built.length} bytes)`);
