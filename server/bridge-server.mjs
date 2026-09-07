@@ -144,6 +144,7 @@ export class GameBridge {
             return Promise.reject(new Error("No game connected"));
         }
 
+        const socket = this.socket;
         const id = this.nextId++;
         return new Promise((resolve, reject) => {
             const timer = setTimeout(() => {
@@ -152,7 +153,22 @@ export class GameBridge {
             }, timeoutMs);
 
             this.pending.set(id, { resolve, reject, timer });
-            this.socket.send(JSON.stringify({ id, method, params }));
+            const failSend = error => {
+                if (!error) return;
+                const entry = this.pending.get(id);
+                if (!entry) return;
+
+                this.pending.delete(id);
+                clearTimeout(entry.timer);
+                const message = error instanceof Error ? error.message : String(error);
+                reject(new Error(`Failed to send ${method}: ${message}`));
+            };
+
+            try {
+                socket.send(JSON.stringify({ id, method, params }), failSend);
+            } catch (error) {
+                failSend(error);
+            }
         });
     }
 

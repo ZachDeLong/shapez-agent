@@ -115,6 +115,35 @@ const [{ id: newCallId }] = newSocket.sent;
 reconnectBridge.onMessage(JSON.stringify({ id: newCallId, ok: true, result: "new response" }));
 check("stale close leaves new-socket calls alive", (await newCall) === "new response");
 
+// --- send failures reject immediately and release pending state ---
+const throwingSocket = new FakeSocket();
+throwingSocket.send = () => { throw new Error("socket write failed"); };
+const throwingBridge = new GameBridge({ log: () => {} });
+throwingBridge.handleConnection(throwingSocket);
+let synchronousSendRejected = false;
+try {
+    await throwingBridge.call("sync-send-failure", {}, 5000);
+} catch (ex) {
+    synchronousSendRejected = ex.message.includes("socket write failed");
+}
+check("synchronous send failure rejects with its cause", synchronousSendRejected);
+check("synchronous send failure clears pending state", throwingBridge.pending.size === 0);
+
+const callbackSocket = new FakeSocket();
+callbackSocket.send = (_raw, callback) => {
+    queueMicrotask(() => callback(new Error("send callback failed")));
+};
+const callbackBridge = new GameBridge({ log: () => {} });
+callbackBridge.handleConnection(callbackSocket);
+let callbackSendRejected = false;
+try {
+    await callbackBridge.call("callback-send-failure", {}, 5000);
+} catch (ex) {
+    callbackSendRejected = ex.message.includes("send callback failed");
+}
+check("send callback failure rejects with its cause", callbackSendRejected);
+check("send callback failure clears pending state", callbackBridge.pending.size === 0);
+
 // --- disconnect fails in-flight calls instead of hanging ---
 const inflight = bridge.call("observe", {}, 5000);
 game.terminate();
