@@ -13,6 +13,7 @@ import { GameBridge } from "../server/bridge-server.mjs";
 import { readIntegerEnv } from "../server/env.mjs";
 import { TOOLS, createDispatcher } from "../server/tools.mjs";
 import { SYSTEM_PROMPT, initialTask } from "./prompt.mjs";
+import { createBridgeLifecycle } from "./bridge-lifecycle.mjs";
 
 const MODEL = "claude-opus-5";
 // Opus 5 guidance is to start at xhigh for agentic work and sweep down; "high"
@@ -39,97 +40,99 @@ async function main() {
     }
 
     const bridge = new GameBridge().start();
-    console.log("Waiting for shapez to launch...");
-    await bridge.waitForGame();
-    // A live socket only means the app is running; the mod connects at boot, so
-    // at the main menu there is no game state to act on.
-    await bridge.waitForInGame({
-        onWait: () => console.log("Connected — now start or load a savegame."),
-    });
-    console.log("In game.\n");
+    const lifecycle = createBridgeLifecycle(bridge);
+    try {
+        console.log("Waiting for shapez to launch...");
+        await bridge.waitForGame();
+        // A live socket only means the app is running; the mod connects at boot, so
+        // at the main menu there is no game state to act on.
+        await bridge.waitForInGame({
+            onWait: () => console.log("Connected — now start or load a savegame."),
+        });
+        console.log("In game.\n");
 
-    // Pause so `run` is the only thing that advances time. Without this the
-    // factory keeps running while the model thinks, and its throughput readings
-    // reflect wall-clock rather than the window it asked for.
-    await bridge.setPaused(true);
+        // Pause so `run` is the only thing that advances time. Without this the
+        // factory keeps running while the model thinks, and its throughput readings
+        // reflect wall-clock rather than the window it asked for.
+        await lifecycle.pause();
 
-    const dispatch = createDispatcher(bridge);
-    let toolCalls = 0;
+        const dispatch = createDispatcher(bridge);
+        let toolCalls = 0;
 
-    const tools = TOOLS.map(spec =>
-        betaTool({
-            name: spec.name,
-            description: spec.description,
-            inputSchema: spec.input_schema,
-            run: async input => {
-                toolCalls++;
-                console.log(`  → ${spec.name}(${summarize(input, 120)})`);
-                const result = await dispatch(spec.name, input);
-                console.log(`    ${result?.error ? "✗ " + result.error : summarize(result)}`);
-                return JSON.stringify(result);
-            },
-        })
-    );
+        const tools = TOOLS.map(spec =>
+            betaTool({
+                name: spec.name,
+                description: spec.description,
+                inputSchema: spec.input_schema,
+                run: async input => {
+                    toolCalls++;
+                    console.log(`  → ${spec.name}(${summarize(input, 120)})`);
+                    const result = await dispatch(spec.name, input);
+                    console.log(`    ${result?.error ? "✗ " + result.error : summarize(result)}`);
+                    return JSON.stringify(result);
+                },
+            })
+        );
 
-    const client = new Anthropic();
-    const runner = client.beta.messages.toolRunner({
-        model: MODEL,
-        max_tokens: 16000,
-        system: SYSTEM_PROMPT,
-        output_config: { effort: EFFORT },
-        betas: [FALLBACK_BETA],
-        fallbacks: FALLBACKS,
-        tools,
-        messages: [{ role: "user", content: initialTask(process.env.AGENT_GOAL || "") }],
-        max_iterations: MAX_TURNS,
-    });
+        const client = new Anthropic();
+        const runner = client.beta.messages.toolRunner({
+            model: MODEL,
+            max_tokens: 16000,
+            system: SYSTEM_PROMPT,
+            output_config: { effort: EFFORT },
+            betas: [FALLBACK_BETA],
+            fallbacks: FALLBACKS,
+            tools,
+            messages: [{ role: "user", content: initialTask(process.env.AGENT_GOAL || "") }],
+            max_iterations: MAX_TURNS,
+        });
 
-    let turn = 0;
-    let last = null;
+        let turn = 0;
+        let last = null;
 
-    for await (const message of runner) {
-        last = message;
-        turn++;
+        for await (const message of runner) {
+            last = message;
+            turn++;
 
-        // Refusals arrive as a normal 200 with an empty or partial content
-        // array, so check before reading content.
-        if (message.stop_reason === "refusal") {
-            console.log(`\n[refused: ${message.stop_details?.category ?? "unspecified"}]`);
-            break;
-        }
+            // Refusals arrive as a normal 200 with an empty or partial content
+            // array, so check before reading content.
+            if (message.stop_reason === "refusal") {
+                console.log(`\n[refused: ${message.stop_details?.category ?? "unspecified"}]`);
+                break;
+            }
 
-        for (const block of message.content) {
-            if (block.type === "text" && block.text.trim()) {
-                console.log(`\n[turn ${turn}] ${block.text.trim()}`);
+            for (const block of message.content) {
+                if (block.type === "text" && block.text.trim()) {
+                    console.log(`\n[turn ${turn}] ${block.text.trim()}`);
+                }
             }
         }
-    }
 
-    console.log(`\n${"─".repeat(60)}`);
-    console.log(`Finished after ${turn} turns and ${toolCalls} tool calls.`);
-    if (last?.stop_reason === "max_tokens") {
-        console.log("Stopped on max_tokens — the last turn was truncated.");
-    }
-    if (turn >= MAX_TURNS) {
-        console.log(`Hit the ${MAX_TURNS}-turn cap; raise AGENT_MAX_TURNS to let it continue.`);
-    }
+        console.log(`\n${"─".repeat(60)}`);
+        console.log(`Finished after ${turn} turns and ${toolCalls} tool calls.`);
+        if (last?.stop_reason === "max_tokens") {
+            console.log("Stopped on max_tokens — the last turn was truncated.");
+        }
+        if (turn >= MAX_TURNS) {
+            console.log(`Hit the ${MAX_TURNS}-turn cap; raise AGENT_MAX_TURNS to let it continue.`);
+        }
 
-    // Hand the factory back to real time so you can watch it run.
-    await bridge.setPaused(false).catch(() => {});
+        // Hand the factory back to real time so you can watch it run.
+        await lifecycle.release();
 
-    const final = await bridge.observe({ ascii: true }).catch(() => null);
-    if (final) {
-        console.log(`\nLevel ${final.level}, goal ${final.goal?.shape} ` +
-            `(${final.goal?.delivered}/${final.goal?.required} delivered), ` +
-            `${final.entities.length} buildings placed.`);
-        if (final.ascii) console.log(`\n${final.ascii.grid}`);
+        const final = await bridge.observe({ ascii: true }).catch(() => null);
+        if (final) {
+            console.log(`\nLevel ${final.level}, goal ${final.goal?.shape} ` +
+                `(${final.goal?.delivered}/${final.goal?.required} delivered), ` +
+                `${final.entities.length} buildings placed.`);
+            if (final.ascii) console.log(`\n${final.ascii.grid}`);
+        }
+    } finally {
+        await lifecycle.cleanup();
     }
-
-    bridge.stop();
-    process.exit(0);
 }
 
 main().catch(err => {
     console.error("\nAgent failed:", err.message);
-    process.exit(1);
+    process.exitCode = 1;
 });

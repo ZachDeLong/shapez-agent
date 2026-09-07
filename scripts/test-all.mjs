@@ -12,6 +12,7 @@ const SUITES = [
     ["agent loop", "test-agent-loop.mjs"],
     ["atomic file writes", "test-atomic-write.mjs"],
     ["environment settings", "test-env.mjs"],
+    ["bridge lifecycle", "test-bridge-lifecycle.mjs"],
 ];
 
 let failed = 0;
