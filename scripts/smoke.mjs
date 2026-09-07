@@ -78,12 +78,12 @@ async function main() {
     console.log(await bridge.setPaused(false));
 
     console.log("\nSmoke test finished.");
-    bridge.stop();
+    await bridge.stop();
     process.exit(0);
 }
 
-main().catch(err => {
+main().catch(async err => {
     console.error("\nSmoke test failed:", err.message);
-    bridge.stop();
+    await bridge.stop();
     process.exit(1);
 });

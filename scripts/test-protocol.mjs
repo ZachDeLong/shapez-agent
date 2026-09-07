@@ -1,5 +1,5 @@
 // Stubs the game side of the protocol to verify the bridge's RPC layer.
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
 import WebSocket from "ws";
 import { GameBridge } from "../server/bridge-server.mjs";
 import { TOOLS, createDispatcher } from "../server/tools.mjs";
@@ -45,6 +45,14 @@ game.on("message", raw => {
 });
 
 await bridge.waitForGame(5000);
+
+let duplicateStartRejected = false;
+try {
+    bridge.start();
+} catch (ex) {
+    duplicateStartRejected = ex.message.includes("already started");
+}
+check("starting an active bridge is rejected", duplicateStartRejected);
 
 // --- request/response plumbing ---
 check("ping round-trips", (await bridge.ping()).pong === true);
@@ -172,15 +180,23 @@ check("timed-out connection waiter is removed", timeoutBridge.waitingForConnect.
 
 const stoppedBridge = new GameBridge({ log: () => {} });
 const stoppedWaiter = stoppedBridge.waitForGame(5000);
-stoppedBridge.stop();
+const stoppedBridgeClose = stoppedBridge.stop();
 let stopRejectedWaiter = false;
 try {
     await stoppedWaiter;
 } catch (ex) {
     stopRejectedWaiter = ex.message.includes("Bridge stopped");
 }
+await stoppedBridgeClose;
 check("stopping the bridge rejects connection waiters", stopRejectedWaiter);
 check("stopping the bridge removes connection waiters", stoppedBridge.waitingForConnect.size === 0);
+let waitAfterStopRejected = false;
+try {
+    await stoppedBridge.waitForGame();
+} catch (ex) {
+    waitAfterStopRejected = ex.message.includes("Bridge stopped");
+}
+check("a stopped bridge does not report a stale connection", waitAfterStopRejected);
 
 // --- waitForInGame uses one timeout budget across connection and polling ---
 const budgetBridge = new GameBridge({ log: () => {} });
@@ -211,6 +227,15 @@ let disconnectHandled = false;
 try { await inflight; } catch (ex) { disconnectHandled = ex.message.includes("disconnected"); }
 check("disconnect rejects in-flight calls", disconnectHandled);
 
-bridge.stop();
+await bridge.stop();
+check("stop clears live socket and server references", bridge.socket === null && bridge.server === null);
+
+bridge.start();
+await once(bridge.server, "listening");
+check("a fully stopped bridge can restart on the same port", bridge.server.address().port === 8799);
+await bridge.stop();
+await bridge.stop();
+check("stopping an already stopped bridge is harmless", bridge.server === null);
+
 console.log(failures ? `\n${failures} FAILED` : "\nAll checks passed");
 process.exit(failures ? 1 : 0);

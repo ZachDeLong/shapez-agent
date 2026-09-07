@@ -25,7 +25,7 @@ export function createBridgeLifecycle(bridge) {
                     shouldUnpause = false;
                 }
             } finally {
-                bridge.stop();
+                await bridge.stop();
             }
         },
     };

@@ -29,9 +29,13 @@ export class GameBridge {
         /** @type {Set<{resolve: Function, reject: Function, timer: any}>} */
         this.waitingForConnect = new Set();
         this.server = null;
+        this.stopped = false;
     }
 
     start() {
+        if (this.server) throw new Error("Bridge server is already started");
+
+        this.stopped = false;
         this.server = new WebSocketServer({ port: this.port });
         this.log(`[bridge] listening on ws://127.0.0.1:${this.port}`);
 
@@ -41,6 +45,10 @@ export class GameBridge {
     }
 
     handleConnection(socket) {
+        if (this.stopped) {
+            socket.terminate();
+            return;
+        }
         if (this.socket) {
             this.log("[bridge] replacing previous connection");
             this.failAllPending(new Error("Game connection replaced"));
@@ -69,15 +77,26 @@ export class GameBridge {
     }
 
     stop() {
+        this.stopped = true;
         this.failAllPending(new Error("Bridge stopped"));
         this.failAllConnectWaiters(new Error("Bridge stopped"));
-        if (this.socket) this.socket.terminate();
-        if (this.server) this.server.close();
+        const socket = this.socket;
+        this.socket = null;
+        if (socket) socket.terminate();
+
+        const server = this.server;
+        this.server = null;
+        if (!server) return Promise.resolve();
+
+        return new Promise((resolve, reject) => {
+            server.close(error => error ? reject(error) : resolve());
+        });
     }
 
     /** Resolves once the game process has connected its socket. */
     waitForGame(timeoutMs = 120_000) {
-        if (this.socket) return Promise.resolve();
+        if (this.stopped) return Promise.reject(new Error("Bridge stopped"));
+        if (this.socket && this.socket.readyState === this.socket.OPEN) return Promise.resolve();
         return new Promise((resolve, reject) => {
             const waiter = { resolve, reject, timer: null };
             waiter.timer = setTimeout(() => {
@@ -242,8 +261,8 @@ export class GameBridge {
 // Run standalone: node server/bridge-server.mjs
 if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}`) {
     const bridge = new GameBridge().start();
-    process.on("SIGINT", () => {
-        bridge.stop();
+    process.on("SIGINT", async () => {
+        await bridge.stop();
         process.exit(0);
     });
 }

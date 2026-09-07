@@ -193,7 +193,7 @@ console.log("\n=== refusal path ===");
 // trips a libuv assertion on Windows.
 game.close();
 await new Promise(resolve => game.once("close", resolve));
-bridge.stop();
+await bridge.stop();
 await new Promise(resolve => api.close(resolve));
 
 console.log(failures ? `\n${failures} of ${checks} checks FAILED` : `\nAll ${checks} checks passed`);
