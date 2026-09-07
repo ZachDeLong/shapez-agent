@@ -1,4 +1,5 @@
 // Stubs the game side of the protocol to verify the bridge's RPC layer.
+import { EventEmitter } from "node:events";
 import WebSocket from "ws";
 import { GameBridge } from "../server/bridge-server.mjs";
 import { TOOLS, createDispatcher } from "../server/tools.mjs";
@@ -78,6 +79,41 @@ for (const t of TOOLS) {
     const r = await dispatch(t.name, {});
     check(`  dispatch(${t.name}) reaches the game`, !r?.error || !r.error.startsWith("Unknown tool"));
 }
+
+// --- replacement socket close events must not poison the new connection ---
+class FakeSocket extends EventEmitter {
+    constructor() {
+        super();
+        this.OPEN = 1;
+        this.readyState = this.OPEN;
+        this.sent = [];
+        this.terminated = false;
+    }
+    send(raw) {
+        this.sent.push(JSON.parse(raw));
+    }
+    terminate() {
+        this.terminated = true;
+    }
+}
+
+const reconnectBridge = new GameBridge({ log: () => {} });
+const oldSocket = new FakeSocket();
+const newSocket = new FakeSocket();
+reconnectBridge.handleConnection(oldSocket);
+
+const oldCall = reconnectBridge.call("old-request", {}, 5000);
+reconnectBridge.handleConnection(newSocket);
+let replacementHandled = false;
+try { await oldCall; } catch (ex) { replacementHandled = ex.message.includes("replaced"); }
+check("replacement rejects calls sent through the old socket", replacementHandled);
+check("replacement terminates the old socket", oldSocket.terminated);
+
+const newCall = reconnectBridge.call("new-request", {}, 5000);
+oldSocket.emit("close");
+const [{ id: newCallId }] = newSocket.sent;
+reconnectBridge.onMessage(JSON.stringify({ id: newCallId, ok: true, result: "new response" }));
+check("stale close leaves new-socket calls alive", (await newCall) === "new response");
 
 // --- disconnect fails in-flight calls instead of hanging ---
 const inflight = bridge.call("observe", {}, 5000);

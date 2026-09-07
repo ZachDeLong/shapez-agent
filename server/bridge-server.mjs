@@ -25,28 +25,34 @@ export class GameBridge {
         this.server = new WebSocketServer({ port: this.port });
         this.log(`[bridge] listening on ws://127.0.0.1:${this.port}`);
 
-        this.server.on("connection", socket => {
-            if (this.socket) {
-                this.log("[bridge] replacing previous connection");
-                this.socket.terminate();
-            }
-            this.socket = socket;
-            this.log("[bridge] game connected");
-
-            const waiters = this.waitingForConnect;
-            this.waitingForConnect = [];
-            for (const resolve of waiters) resolve();
-
-            socket.on("message", raw => this.onMessage(raw));
-            socket.on("close", () => {
-                if (this.socket === socket) this.socket = null;
-                this.log("[bridge] game disconnected");
-                this.failAllPending(new Error("Game disconnected"));
-            });
-            socket.on("error", err => this.log("[bridge] socket error:", err.message));
-        });
+        this.server.on("connection", socket => this.handleConnection(socket));
 
         return this;
+    }
+
+    handleConnection(socket) {
+        if (this.socket) {
+            this.log("[bridge] replacing previous connection");
+            this.failAllPending(new Error("Game connection replaced"));
+            this.socket.terminate();
+        }
+        this.socket = socket;
+        this.log("[bridge] game connected");
+
+        const waiters = this.waitingForConnect;
+        this.waitingForConnect = [];
+        for (const resolve of waiters) resolve();
+
+        socket.on("message", raw => this.onMessage(raw));
+        socket.on("close", () => {
+            // A replaced socket can close after the new connection is already
+            // serving RPCs. Its stale close event must not reject those calls.
+            if (this.socket !== socket) return;
+            this.socket = null;
+            this.log("[bridge] game disconnected");
+            this.failAllPending(new Error("Game disconnected"));
+        });
+        socket.on("error", err => this.log("[bridge] socket error:", err.message));
     }
 
     stop() {
