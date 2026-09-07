@@ -18,6 +18,7 @@ const METADATA = {
 
 const BRIDGE_URL = "ws://127.0.0.1:8765";
 const RECONNECT_MS = 2000;
+const MAX_RUN_SECONDS = 300;
 
 // The A* belt router is injected here by serve-mod.mjs from
 // router/belt-router.mjs. The mod loader evaluates this file with
@@ -523,6 +524,11 @@ class Mod extends shapez.Mod {
      * result does not depend on wall-clock or framerate.
      */
     run({ seconds = 10 }) {
+        if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0 || seconds > MAX_RUN_SECONDS) {
+            throw new Error(
+                `seconds must be a finite number greater than 0 and no more than ${MAX_RUN_SECONDS}`
+            );
+        }
         const core = this.root.gameState.core;
         const deltaSeconds = this.root.dynamicTickrate.deltaSeconds;
         const ticks = Math.max(1, Math.round(seconds / deltaSeconds));

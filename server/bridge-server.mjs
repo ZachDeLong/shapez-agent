@@ -8,6 +8,14 @@ import { WebSocketServer } from "ws";
 
 const PORT = Number(process.env.BRIDGE_PORT || 8765);
 const DEFAULT_TIMEOUT_MS = 30_000;
+export const MAX_RUN_SECONDS = 300;
+
+export function validateRunSeconds(seconds) {
+    if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0 || seconds > MAX_RUN_SECONDS) {
+        throw new Error(`seconds must be a finite number greater than 0 and no more than ${MAX_RUN_SECONDS}`);
+    }
+    return seconds;
+}
 
 export class GameBridge {
     constructor({ port = PORT, log = console.log } = {}) {
@@ -221,7 +229,12 @@ export class GameBridge {
     }
     /** Stepping is synchronous game-side, so allow generous headroom. */
     run(seconds = 10) {
-        return this.call("run", { seconds }, Math.max(60_000, seconds * 2000));
+        const validatedSeconds = validateRunSeconds(seconds);
+        return this.call(
+            "run",
+            { seconds: validatedSeconds },
+            Math.max(60_000, validatedSeconds * 2000)
+        );
     }
 }
 

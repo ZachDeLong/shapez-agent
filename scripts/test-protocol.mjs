@@ -57,6 +57,18 @@ const [a, b, c] = await Promise.all([bridge.buildings(), bridge.ping(), bridge.r
 check("concurrent calls resolve independently",
     Array.isArray(a) && b.pong === true && c.ticks === 900);
 
+// Invalid durations must fail before an RPC can lock the game into an
+// effectively unbounded synchronous update loop.
+for (const seconds of [0, -1, NaN, Infinity, 301]) {
+    let invalidRunRejected = false;
+    try {
+        await bridge.run(seconds);
+    } catch (ex) {
+        invalidRunRejected = ex.message.includes("finite number");
+    }
+    check(`run rejects unsafe duration ${String(seconds)}`, invalidRunRejected);
+}
+
 // --- game-side errors surface as rejections ---
 let rejected = false;
 try { await bridge.call("boom"); } catch (ex) { rejected = ex.message.includes("simulated"); }
@@ -75,6 +87,9 @@ check("every tool has name/description/input_schema",
 check("every dispatcher key has a schema and vice versa",
     TOOLS.every(t => typeof dispatch === "function") && TOOLS.length === 7,
     `${TOOLS.length} tools`);
+const runSecondsSchema = TOOLS.find(t => t.name === "run")?.input_schema?.properties?.seconds;
+check("run schema excludes non-positive durations", runSecondsSchema?.exclusiveMinimum === 0);
+check("run schema caps synchronous simulation work", runSecondsSchema?.maximum === 300);
 for (const t of TOOLS) {
     const r = await dispatch(t.name, {});
     check(`  dispatch(${t.name}) reaches the game`, !r?.error || !r.error.startsWith("Unknown tool"));

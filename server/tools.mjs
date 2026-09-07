@@ -4,6 +4,8 @@
 // Schemas are in Anthropic tool format ({name, description, input_schema}) and
 // are plain JSON — usable from any harness.
 
+import { MAX_RUN_SECONDS } from "./bridge-server.mjs";
+
 export const TOOLS = [
     {
         name: "observe",
@@ -158,7 +160,9 @@ export const TOOLS = [
             properties: {
                 seconds: {
                     type: "number",
-                    description: "In-game seconds to advance. Default 10.",
+                    exclusiveMinimum: 0,
+                    maximum: MAX_RUN_SECONDS,
+                    description: `In-game seconds to advance, up to ${MAX_RUN_SECONDS}. Default 10.`,
                 },
             },
         },

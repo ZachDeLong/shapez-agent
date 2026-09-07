@@ -263,6 +263,20 @@ console.log("=== mod lifecycle ===");
         missing.length ? `missing: ${missing.join(", ")}` : `${TOOL_NAMES.length} tools`);
 }
 
+console.log("\n=== run duration validation ===");
+{
+    const mod = newMod({});
+    for (const seconds of [0, -1, NaN, Infinity, 301]) {
+        let rejected = false;
+        try {
+            mod.run({ seconds });
+        } catch (ex) {
+            rejected = ex.message.includes("finite number");
+        }
+        check(`game-side run rejects ${String(seconds)}`, rejected);
+    }
+}
+
 // patch.pos is the centroid of a patch's tiles, so it is fractional and can sit
 // on a tile with no resource on it. Miners must go on an actual resource tile.
 console.log("\n=== resource patch anchoring ===");
